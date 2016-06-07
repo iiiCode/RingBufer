@@ -19,8 +19,8 @@ private:
 	void init();
 	void destroy();
 private:
-	sem_t mWriteSem;
-	sem_t mReadSem;
+	sem_t *mWriteSem;
+	sem_t *mReadSem;
 
 	int mReadIndex;
 	int mWriteIndex;
