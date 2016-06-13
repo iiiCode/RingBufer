@@ -6,75 +6,118 @@
 
 RingBuffer::RingBuffer()
 {
-	init();
+    init();
 }
 
 RingBuffer::~RingBuffer()
 {
-	destroy();
+    destroy();
 }
 
 void RingBuffer::init()
 {
-	mReadIndex = 0;
-	mWriteIndex = 0;
+    mReadIndex = 0;
+    mWriteIndex = 0;
 
-	mWriteSem = sem_open("write.sem", O_CREAT, 0644, RING_BUFFER_SIZE);
-	mReadSem = sem_open("read.sem", O_CREAT, 0644, 0);	
-
-	if (mWriteSem == SEM_FAILED || mReadSem == SEM_FAILED) {
-		printf("sem_init failed: %s\n", strerror(errno));
-		exit(-1);
-	}
-
-	sem_unlink("write.sem");
-	sem_unlink("read.sem");
+#ifdef ANDROID_PLATFORM
+    sem_init(&mWriteSem, 0, RING_BUFFER_SIZE);
+    sem_init(&mReadSem, 0, 0);
+#else
+    mWriteSem = sem_open("write.sem", O_CREAT, 0644, RING_BUFFER_SIZE);
+    mReadSem = sem_open("read.sem", O_CREAT, 0644, 0);
+    
+    if (mWriteSem == SEM_FAILED || mReadSem == SEM_FAILED) {
+        vLOGE("sem_init failed: %s", strerror(errno));
+        exit(-1);
+    }
+    
+    sem_unlink("write.sem");
+    sem_unlink("read.sem");
+#endif
 }
 
 void RingBuffer::destroy()
 {
-	if (mReadIndex <= mWriteIndex) {
-		for (int i = mReadIndex; i < mWriteIndex; i ++) {
-			mDestroyFunc(mRingBuffer[i]);
-		}
-	} else {
-		for (int i = 0; i < mWriteIndex; i ++) {
-			mDestroyFunc(mRingBuffer[i]);
-		}
-
-		for (int i = mReadIndex; i < RING_BUFFER_SIZE; i ++) {
-			mDestroyFunc(mRingBuffer[i]);
-		}
-	}
-
-	mReadIndex = 0;
-	mWriteIndex = 0;
-
-	sem_close(mReadSem);
-	sem_close(mWriteSem);
+    if (mReadIndex <= mWriteIndex) {
+        for (int i = mReadIndex; i < mWriteIndex; i ++) {
+            mDestroyFunc(mRingBuffer[i]);
+        }
+    } else {
+        for (int i = 0; i < mWriteIndex; i ++) {
+            mDestroyFunc(mRingBuffer[i]);
+        }
+        
+        for (int i = mReadIndex; i < RING_BUFFER_SIZE; i ++) {
+            mDestroyFunc(mRingBuffer[i]);
+        }
+    }
+    
+    mReadIndex = 0;
+    mWriteIndex = 0;
+    
+#ifdef ANDROID_PLATFORM
+    sem_destroy(&mWriteSem);
+    sem_destroy(&mReadSem);
+#else
+    sem_close(mReadSem);
+    sem_close(mWriteSem);
+#endif
 }
 
 void RingBuffer::setDestroy(void (*destroy)(DataType *))
 {
-	mDestroyFunc = destroy;
+    mDestroyFunc = destroy;
 }
 
 void RingBuffer::enqueue(DataType *item)
 {
-	sem_wait(mWriteSem);
-
-	mRingBuffer[mWriteIndex] = item;
-	mWriteIndex = (mWriteIndex + 1) % RING_BUFFER_SIZE;
-
-	sem_post(mReadSem);
+#ifdef ANDROID_PLATFORM
+    sem_wait(&mWriteSem);
+#else
+    sem_wait(mWriteSem);
+#endif
+    
+    mRingBuffer[mWriteIndex] = item;
+    mWriteIndex = (mWriteIndex + 1) % RING_BUFFER_SIZE;
+    
+#ifdef ANDROID_PLATFORM
+    sem_post(&mReadSem);
+#else
+    sem_post(mReadSem);
+#endif
 }
 
 void RingBuffer::dequeue(DataType **item)
 {
-	sem_wait(mReadSem);
+#ifdef ANDROID_PLATFORM
+    sem_wait(&mReadSem);
+#else
+    sem_wait(mReadSem);
+#endif
+    
+    *item = mRingBuffer[mReadIndex];
+    mReadIndex = (mReadIndex + 1) % RING_BUFFER_SIZE;
+    
+#ifdef ANDROID_PLATFORM
+    sem_post(&mWriteSem);
+#else
+    sem_post(mWriteSem);
+#endif
+}
 
-	*item = mRingBuffer[mReadIndex];
-	mReadIndex = (mReadIndex + 1) % RING_BUFFER_SIZE;
+void RingBuffer::flush()
+{
+    destroy();
+    init();
+}
 
-	sem_post(mWriteSem);
+void RingBuffer::notifyRingBufferExit()
+{
+#ifdef ANDROID_PLATFORM
+    sem_post(&mReadSem);
+    sem_post(&mWriteSem);
+#else
+    sem_post(mReadSem);
+    sem_post(mWriteSem);
+#endif
 }

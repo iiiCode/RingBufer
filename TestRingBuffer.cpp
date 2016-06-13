@@ -3,6 +3,7 @@
 #include <unistd.h>
 #include <pthread.h>
 
+#include "Log.hpp"
 #include "RingBuffer.h"
 
 #define NUM 2
@@ -24,7 +25,7 @@ static void *do_producer(void *args)
 		int *p = (int *)malloc(sizeof(int));
 		*p = value;
 		buffer->enqueue(p);
-		printf("Enqueue: %d\n", value);
+		vLOGE("Enqueue: %d", value);
 		value ++;
 		usleep(100);
 	}
@@ -39,7 +40,7 @@ static void *do_consumer(void *args)
 	while(c_times --) {
 		int *p;
 		buffer->dequeue(&p);
-		printf("Value: %d\n", *p);
+		vLOGE("Value: %d", *p);
 		free(p);
 	}
 
